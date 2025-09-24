@@ -1,0 +1,6 @@
+pooling_layer: SWAP
+feature_names:
+- ild
+- gam
+- mon
+- dir
