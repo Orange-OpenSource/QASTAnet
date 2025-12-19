@@ -58,7 +58,7 @@ The training dataset is composed of the audio samples with a name ending by "_3"
 | AMB_3 | Park  | ZM-1 recording | Internal |
 | AMB_4 | Stadium | EM32 recording | Internal |
 | AMB_5 | Stadium | EM32 recording | Internal |
-| AMB_6 | ? | ? | Internal |
+| AMB_6 | Outdoor crowd | EM32 recording | Internal |
 | APP_1 | Applause in concert hall 1 | EM32 recording | Internal |
 | APP_2 | Applause in concert hall 2 | EM32 recording | Internal |
 | APP_3 | Applause in church concert | EM32 recording | Internal |
