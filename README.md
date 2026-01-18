@@ -31,7 +31,7 @@ python run_qastanet.py --ref resources/audio/ref.wav --deg resources/audio/deg.w
 ```
 For this sample, QASTAnet should predict a quality of 0.78.
 
-We provide a second sample, `ref_rev.wav`, identical to the first one but spatialized by convoluting it with an SRIR from an Eigenmike 32 in a reverberant room.
+We provide a second sample, `ref_rev.wav`, identical to the first one but spatialized by convolving it with an SRIR from an Eigenmike 32 in a reverberant room.
 ```
 python run_qastanet.py --ref resources/audio/ref_rev.wav --deg resources/audio/deg_rev.wav
 ```
@@ -40,7 +40,7 @@ For this sample, QASTAnet should predict a quality of 0.19.
 ## Citation
 If you use this code, please cite both the repository and the associated paper:
 
-Llave Adrien, Granier Emma, and Pallone Grégory, "*QASTAnet: A DNN-based Quality Metric for Spatial Audio*", 2025, [https://arxiv.org/abs/2509.16715](https://arxiv.org/abs/2509.16715)
+Llave Adrien, Granier Emma, and Pallone Grégory (2026). "[*QASTAnet: A DNN-based Quality Metric for Spatial Audio*](https://arxiv.org/abs/2509.16715)". In : ICASSP 2026-2026 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP). IEEE.
 
 ## License
 This project is licensed under the [MIT License](LICENSE.txt).
