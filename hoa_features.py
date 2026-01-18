@@ -50,9 +50,11 @@ class Directiveness(Module):
 
         diffsmooth_cycles = 20
         diffsmooth_limf = 3000
-        self.alpha_dif = self._get_nrj_iir_coef(diffsmooth_cycles, diffsmooth_limf)
+        alpha_dif = self._get_nrj_iir_coef(diffsmooth_cycles, diffsmooth_limf)
+        self.register_buffer("alpha_dif", alpha_dif)
         #
-        self.freq_2_erb_m = self.get_freq_erb_grouping_matrix(**erb_args)
+        freq_2_erb_m = self.get_freq_erb_grouping_matrix(**erb_args)
+        self.register_buffer("freq_2_erb_m", freq_2_erb_m)
 
     @property
     def n_freq(self):

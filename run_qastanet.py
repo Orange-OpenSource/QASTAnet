@@ -74,13 +74,23 @@ deg = torch.tensor(deg.T, dtype=torch.float32).unsqueeze(0)
 with open(args.config, "r") as stream:
     config_model_d = yaml.safe_load(stream)
 metric = QASTAnet(**config_model_d, checkpoint_fn=checkpoint_fn, VERBOSE=args.verbose)
+metric.eval()
+
+# -- if GPU available
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+metric.to(device)
+if torch.cuda.is_available():
+    metric.filter_mode = 'FIR_AUTOGRAD'
+ref, deg = ref.to(device), deg.to(device)
 
 # -- Run percetual quality score estimation
 st = time.time()
-score = metric(deg, ref)
+with torch.no_grad():
+    score = metric(deg, ref)
+    score = score.cpu().detach().numpy()[0]
 print(
     f"Score estimated in {(time.time() - st):.2f} seconds for an audio example of {(ref.shape[-1] / fs):.2f} seconds."
 )
 print(
-    f"QASTAnet predicts a quality of {score.detach()[0]:.2f} (scaled between 0 and 1)."
+    f"QASTAnet predicts a quality of {score:.2f} (scaled between 0 and 1)."
 )

@@ -31,14 +31,17 @@ class HOAToBinaural(Module):
     Ambisonic signals are assumed to be in ACN SN3D convention
     """
 
-    def __init__(self, hoa2bin_fn, fs=48000):
+    def __init__(self, hoa2bin_fn=None, fs=48000):
         super().__init__()
         self.fs = fs
-        sofa = sofar.read_sofa(hoa2bin_fn)
-        hoa2bin_t = sofa.Data_IR  # (n_mes, l/r, n_tap, n_ch)
-        hoa2bin_t = np.moveaxis(hoa2bin_t[0, ...], 1, 2)  # (l/r, n_ch, n_tap)
-        assert self.fs == sofa.Data_SamplingRate, "HOAToBinaural: sample rate mismatch."
-        self.register_buffer("hoa2bin_t", torch.from_numpy(hoa2bin_t), persistent=False)
+        if hoa2bin_fn is not None:
+            sofa = sofar.read_sofa(hoa2bin_fn)
+            hoa2bin_t = sofa.Data_IR  # (n_mes, l/r, n_tap, n_ch)
+            hoa2bin_t = np.moveaxis(hoa2bin_t[0, ...], 1, 2)  # (l/r, n_ch, n_tap)
+            assert self.fs == sofa.Data_SamplingRate, "HOAToBinaural: sample rate mismatch."
+        else:
+            hoa2bin_t = np.zeros((2, 16, 128))
+        self.register_buffer("hoa2bin_t", torch.from_numpy(hoa2bin_t))
 
     def forward(self, hoa):
         batchsize, n_ch, n_smp = hoa.shape
@@ -61,21 +64,49 @@ class QASTAnet(Module):
         frame_len=40,  # ms
         pooling_layer="SWAP",
         feature_names=["ild", "gam", "mon", "dir"],
-        ambi2bin_paths="resources/ambi2bin/HRIR_128_Meth5_OLPS_2001_48000_HOA3.sofa",  # str or list of str
-        gammatone_fir_fn=os.path.join("resources", "filters", "filter_coeffs_gammatone_48000_2048.py"),
-        lowpass_fir_fn=os.path.join("resources", "filters", "filter_coeffs_butter_48000_512.py"),
+        ambi2bin_paths=None,  # str or list of str
+        gammatone_fir_fn=None,
+        lowpass_fir_fn=None,
         checkpoint_fn=None,
         VERBOSE=False,
         filter_mode="IIR",  # 'IIR' or 'FIR_AUTOGRAD'
     ):
-        """ """
+        """
+        QASTAnet class
+        Parameters
+        ----------
+        fs: int, float
+            Sampling frequency. Default: 48000
+        frame_len: int, float
+            Frame length in ms. Default: 40
+        pooling_layer: str
+            Time pooling layer. Default is SWAP
+        feature_names: list of strings
+            Features short name. Default is ["ild", "gam", "mon", "dir"]
+        ambi2bin_paths: str, Path or list of str
+            Ambisonic to binaural filters path (SOFA files). Default is None.
+            The filters may be stored in checkpoint
+        gammatone_fir_fn: str, Path
+            Gammatone filterbank impulse responses path (.py). Default is None.
+            The filters may be stored in checkpoint.
+        lowpass_fir_fn: str, Path
+            Low-pass impulse response path (.py). Default is None.
+            The filter may be stored in checkpoint.
+        checkpoint_fn: str, Path
+            Checkpoint path.
+        VERBOSE: bool
+            Flag enabling verbose mode;
+        filter_mode: str
+            Filtering mode for Gammatone filterbank and low-pass filter.
+            Default is "IIR".
+            For GPU accelaration and gradient back-propagation, consider "FIR_AUTOGRAD".
+        
+        """
         super(QASTAnet, self).__init__()
         self.fs = fs
         self.checkpoint_fn = checkpoint_fn
         self.VERBOSE = VERBOSE
         self.filter_mode = filter_mode
-        # Ambisonic to binaural filters
-        self._load_ambi2bin(ambi2bin_paths)
         # Original parameters from mpar
         self.filters_per_ERBaud = 1  # filters per ERB
         self.bwfactor = 1
@@ -98,8 +129,10 @@ class QASTAnet(Module):
             "center_frequencies_hz", torch.from_numpy(center_frequencies_hz)
         )
         self.register_buffer("limit_threshold", torch.from_numpy(limit_threshold))
+        # Ambisonic to binaural filters
+        self._load_ambi2bin(ambi2bin_paths)
 
-        # for filter_mode 'IIR' # GP: on fait pas un if filter_mode?
+        # for filter_mode 'IIR'
         # Load lowpass filter
         self.lowpass_coefs = butter(
             self.env_lowpass_n, 2 * self.env_lowpass_fc / self.fs
@@ -111,32 +144,39 @@ class QASTAnet(Module):
             sampling_rate=fs,
         )
 
-        # for filter_mode 'FIR' # GP: on fait pas un if filter_mode?
+        # for filter_mode 'FIR'
         # Load gammatone filters
-        spec = importlib.util.spec_from_file_location("gammatone", gammatone_fir_fn)
-        gammatone = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(gammatone)
-        assert gammatone.ir_fs == fs  # Only 48kHz supported
-        gammatone_real = np.array(gammatone.ir_real_list, dtype=np.float32)
-        gammatone_imag = np.array(gammatone.ir_imag_list, dtype=np.float32)
-        #  Load lowpass filter
-        spec = importlib.util.spec_from_file_location("lowpass", lowpass_fir_fn)
-        lowpass = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(lowpass)
-        assert lowpass.ir_fs == fs  # Only 48kHz supported
-        lowpass = np.float32(np.array(lowpass.ir_list))
+        if gammatone_fir_fn is not None:
+            spec = importlib.util.spec_from_file_location("gammatone", gammatone_fir_fn)
+            gammatone = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(gammatone)
+            assert gammatone.ir_fs == fs  # Only 48kHz supported
+            gammatone_real = np.array(gammatone.ir_real_list, dtype=np.float32)
+            gammatone_imag = np.array(gammatone.ir_imag_list, dtype=np.float32)
+        else:
+            gammatone_real = np.zeros((29, 2048), dtype=np.float32)
+            gammatone_imag = np.zeros((29, 2048), dtype=np.float32)
         self.register_buffer("gammatone_real", torch.from_numpy(gammatone_real))
         self.register_buffer("gammatone_imag", torch.from_numpy(gammatone_imag))
+        #  Load lowpass filter
+        if lowpass_fir_fn is not None:
+            spec = importlib.util.spec_from_file_location("lowpass", lowpass_fir_fn)
+            lowpass = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(lowpass)
+            assert lowpass.ir_fs == fs  # Only 48kHz supported
+            lowpass = np.float32(np.array(lowpass.ir_list))
+        else:
+            lowpass = np.zeros((512,), dtype=np.float32)
         self.register_buffer("lowpass", torch.from_numpy(lowpass))
 
-        self.fb = self.gammatone_real.shape[0]  # Number of frequency bands (29)
-        self.gt = self.gammatone_real.shape[1]  # Length of GammaTone filter
-        self.lp = self.lowpass.shape[0]  # Length of LowPass filter
         self.lr = 2  # Left/right
         self.rd = 2  # Ref/Degraded
 
         self.feature_names = feature_names
         self.n_feat = len(self.feature_names)
+
+        win_len = int(self.frame_len / 1000 * self.fs)
+        self.directiveness = Directiveness(fs=self.fs, win_len=win_len)
 
         # Score estimation DNN
         self.nan_num_replace = 0
@@ -160,22 +200,38 @@ class QASTAnet(Module):
         if checkpoint_fn is not None:
             checkpoint = torch.load(checkpoint_fn, map_location="cpu")
             self.load_state_dict(checkpoint["state_dict"])
+    
+    @property
+    def fb(self):
+        # Number of frequency bands (29)
+        return self.gammatone_real.shape[0]
+    
+    @property
+    def gt(self):
+        # Length of GammaTone filter
+        return self.gammatone_real.shape[1]
+    
+    @property
+    def lp(self):
+        # Length of LowPass filter
+        return self.lowpass.shape[0]
 
     def _load_ambi2bin(self, ambi2bin_paths):
         """
         Define ambisonic to binaural processors instances
         """
-        if isinstance(ambi2bin_paths, str):
+        if not isinstance(ambi2bin_paths, list):
             ambi2bin_paths = [
                 ambi2bin_paths,
             ]
         self.n_heads = len(ambi2bin_paths)
-        self.ambi2bin_procs = []
+        ambi2bin_procs = []
         for ambi2bin_path in ambi2bin_paths:
-            self.ambi2bin_procs.append(HOAToBinaural(ambi2bin_path, fs=self.fs))
-            assert self.ambi2bin_procs[-1].fs == self.fs, (
-                f"Sampling frequency mismatch between {self.fs} target sampling rate and from the file {ambi2bin_path}, {self.ambi2bin_procs[-1].fs}"
+            ambi2bin_procs.append(HOAToBinaural(ambi2bin_path, fs=self.fs))
+            assert ambi2bin_procs[-1].fs == self.fs, (
+                f"Sampling frequency mismatch between {self.fs} target sampling rate and from the file {ambi2bin_path}, {ambi2bin_procs[-1].fs}"
             )
+        self.ambi2bin_procs = nn.ModuleList(ambi2bin_procs)
 
         return
 
@@ -469,10 +525,7 @@ class QASTAnet(Module):
     def hoa_features(self, deg, ref):
         features = {}
         if "dir" in self.feature_names:
-            win_len = int(self.frame_len / 1000 * self.fs)
-            directiveness = Directiveness(fs=self.fs, win_len=win_len)
-            dir_diff_t = directiveness(deg, ref)
-            features["dir"] = dir_diff_t
+            features["dir"] = self.directiveness(deg, ref)
 
         return features
 
