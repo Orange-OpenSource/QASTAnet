@@ -44,8 +44,12 @@ class HOAToBinaural(Module):
         self.register_buffer("hoa2bin_t", torch.from_numpy(hoa2bin_t))
 
     def forward(self, hoa):
-        batchsize, n_ch, n_smp = hoa.shape
         _, n_ch_filt, n_tap = self.hoa2bin_t.shape
+        n_ch = hoa.shape[1]
+        if 3 < n_ch < n_ch_filt:            
+            hoa = F.pad(hoa, pad=(0, 0, 0, n_ch_filt-n_ch), mode='constant', value=0.0)
+        batchsize, n_ch, n_smp = hoa.shape
+        
         assert n_ch_filt == n_ch, f"Number of channels mistmatch, {n_ch_filt}, {n_ch}"
         bino = torch.sum(
             torchaudio.functional.fftconvolve(
